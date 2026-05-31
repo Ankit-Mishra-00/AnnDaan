@@ -231,11 +231,14 @@ class FoodListingCard extends StatelessWidget {
     final int servings = itemData['servings_count'] ?? 0;
     final double weight = double.tryParse(itemData['food_weight_kg']?.toString() ?? '0') ?? 0.0;
     final double fee = double.tryParse(itemData['delivery_fee']?.toString() ?? '0') ?? 0.0;
-    final String? imageUrl = itemData['image_url'];
     final bool providesDelivery = itemData['provides_delivery'] ?? false;
 
+    final String rawImageUrl = itemData['image_url']?.toString() ?? '';
+    final List<String> imageUrls = rawImageUrl.isNotEmpty ? rawImageUrl.split(',') : [];
+    final String? primaryImageUrl = imageUrls.isNotEmpty ? imageUrls.first : null;
+
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: Colors.white,
       elevation: isUrgent ? 3 : 1,
       shape: RoundedRectangleBorder(
@@ -244,131 +247,166 @@ class FoodListingCard extends StatelessWidget {
             ? BorderSide(color: Colors.red.shade300, width: 1.5)
             : BorderSide.none,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 150,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+      // 🌟 UPDATED LAYOUT FRAMEWORK: Changed vertical column layout into a clean side-by-side row split
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Left Side: Tall Image Frame (Optimized for standard vertical mobile snapshots)
+            Container(
+              width: 120, // Clean width configuration for portrait aspect frame look
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(15),
+                  bottomLeft: Radius.circular(15),
+                ),
+              ),
+              child: primaryImageUrl != null
+                  ? ClipRRect(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(15),
+                  bottomLeft: Radius.circular(15),
+                ),
+                child: Image.network(
+                  primaryImageUrl,
+                  fit: BoxFit.cover, // fills the tall container naturally without empty gaps
+                ),
+              )
+                  : Center(
+                child: Icon(Icons.restaurant, size: 36, color: Colors.grey.shade400),
+              ),
             ),
-            child: imageUrl != null
-                ? ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
-              child: Image.network(imageUrl, fit: BoxFit.cover),
-            )
-                : Center(child: Icon(Icons.restaurant, size: 50, color: Colors.grey.shade400)),
-          ),
 
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            // Right Side: Scroll-nested detailing elements and transactional action options
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween, // Distributes elements cleanly
                   children: [
-                    Expanded(
-                      child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text("Serves $servings+", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-                Text("By $caterer", style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 6),
-
-                Text(
-                    "Items: $itemsDesc",
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.grey.shade800, fontSize: 13)
-                ),
-                const SizedBox(height: 10),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      weight > 0 ? "⚖️ Weight: ${weight}kg est." : "⚖️ Weight: N/A",
-                      style: const TextStyle(fontSize: 12, color: Colors.black54),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: isUrgent ? Colors.red.shade50 : Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        "🕒 $expiryText",
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: isUrgent ? Colors.red.shade800 : Colors.blue.shade800
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Icon(
-                        providesDelivery ? Icons.local_shipping_outlined : Icons.directions_walk_outlined,
-                        size: 16,
-                        color: Colors.grey
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      providesDelivery ? "Delivery Provided" : "Self-Pickup Required",
-                      style: const TextStyle(fontSize: 12, color: Colors.black54),
-                    ),
-                  ],
-                ),
-
-                const Divider(height: 20),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                        fee > 0 ? "Fee: ₹${fee.toStringAsFixed(0)}" : "Fee: Free",
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green)
-                    ),
-                    ElevatedButton(
-                      // 🎉 UNBLOCKED ROUTE: Open details immediately for all users
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => FoodDetails(
-                              itemData: itemData,
-                              expiryText: expiryText,
-                              isUrgent: isUrgent,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isUrgent ? Colors.red.shade600 : Colors.orange,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      child: const Text("View Details", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            const SizedBox(width: 4),
+                            Text(
+                              "Serves $servings+",
+                              style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                        Text(
+                          "By $caterer",
+                          style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w500, fontSize: 13),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "Items: $itemsDesc",
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              weight > 0 ? "⚖️ ${weight}kg est." : "⚖️ N/A",
+                              style: const TextStyle(fontSize: 11, color: Colors.black54),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: isUrgent ? Colors.red.shade50 : Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                "🕒 $expiryText",
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: isUrgent ? Colors.red.shade800 : Colors.blue.shade800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              providesDelivery ? Icons.local_shipping_outlined : Icons.directions_walk_outlined,
+                              size: 14,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              providesDelivery ? "Delivery Provided" : "Self-Pickup Required",
+                              style: const TextStyle(fontSize: 11, color: Colors.black54),
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              fee > 0 ? "₹${fee.toStringAsFixed(0)}" : "Free",
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.green),
+                            ),
+                            SizedBox(
+                              height: 32,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => FoodDetails(
+                                        itemData: itemData,
+                                        expiryText: expiryText,
+                                        isUrgent: isUrgent,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isUrgent ? Colors.red.shade600 : Colors.orange,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                ),
+                                child: const Text(
+                                  "View Details",
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

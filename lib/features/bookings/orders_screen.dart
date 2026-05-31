@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../widgets/review_bottom_sheet.dart';
 import '../screens/login_screen.dart';
 import '../../widgets/verification_upload_screen.dart';
+import '../../services/food_actions_service.dart'; // 🌟 Ensure your service path matches your structure
 
 class OrdersScreen extends StatefulWidget {
   final String receiverId;
@@ -41,7 +42,6 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     final user = supabase.auth.currentUser;
 
     // 🚪 STEP 1: GUEST INTERCEPTION - No User Exists
-    // 🔥 Clean layout: Removed the redundant, breaking sign-out button entirely!
     if (user == null) {
       return Scaffold(
         backgroundColor: Colors.white,
@@ -191,7 +191,6 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                       const SizedBox(height: 12),
                     ],
 
-                    // 🛡️ EMERGENCY SIGN OUT - Now fully protected against session absence errors
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(double.infinity, 48),
@@ -202,14 +201,9 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                       label: const Text("Sign Out to Guest Mode", style: TextStyle(color: Colors.black87, fontSize: 13)),
                       onPressed: () async {
                         try {
-                          // 1. Attempt a standard clean network sign-out
                           await supabase.auth.signOut();
                         } catch (e) {
                           debugPrint("Server session already gone, forcing local eviction: $e");
-
-                          // 2. FORCE EVICTION: If the server rejects the token, manually clear
-                          // the local session state so the app immediately flips back to Guest Mode.
-                          // This forces the stream/user listener to reset to null.
                           supabase.auth.setSession("");
                         }
                       },
@@ -286,9 +280,13 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
             final String title = item['title']?.toString() ?? 'Surplus Leftovers';
             final String caterer = item['caterer_name']?.toString() ?? 'Anonymous Donor';
             final String donorId = item['donor_id']?.toString() ?? '';
-            final String address = item['pickup_address']?.toString() ?? 'Address details inside profile';
             final String status = item['status']?.toString() ?? 'claimed';
             final String deliveryType = item['delivery_type']?.toString() ?? 'needs_volunteer';
+
+            // 🌟 REAL DATA ADAPTATION FOR DYNAMIC DROP-OFF OVERRIDES
+            final String targetDropoffAddress = item['delivery_address']?.toString().isNotEmpty == true
+                ? item['delivery_address']
+                : (item['dropoff_address'] ?? 'Default Profile Coordinates');
 
             final String? volunteerId = item['volunteer_id']?.toString();
             final String volunteerName = item['volunteer_name'] ?? 'Transport Driver';
@@ -301,6 +299,8 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
             final bool isSelfPickup = deliveryType == 'self_pickup';
             final bool isDriverInTransit = status == 'in_transit';
             final bool hasVolunteer = volunteerId != null && volunteerId.trim().isNotEmpty;
+
+            // Allow completion if it is a manual self-pickup or if the package is processing/on the road
             final bool canComplete = isSelfPickup || isDriverInTransit || status == 'arrived_at_pickup';
             final bool isActiveTab = !const ['completed', 'expired', 'cancelled'].contains(status);
 
@@ -340,7 +340,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            address,
+                            "Deliver To: $targetDropoffAddress",
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 12, color: Colors.grey),
@@ -368,35 +368,40 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                           label: Text(
                             isDriverInTransit
                                 ? "Driver In Transit - Confirm Handover"
-                                : (hasVolunteer ? "Awaiting Driver Collection" : "Confirm Safe Collection"),
+                                : (status == 'arrived_at_pickup'
+                                ? "Driver Collecting Cargo"
+                                : (status == 'en_route_to_pickup'
+                                ? "Driver Traveling to Donor"
+                                : (hasVolunteer ? "Awaiting Driver Start" : "Confirm Safe Collection"))),
                             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                           ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: isDriverInTransit ? Colors.orange : (canComplete ? Colors.green : Colors.grey.shade400),
+                            backgroundColor: isDriverInTransit
+                                ? Colors.orange
+                                : (canComplete ? Colors.green : Colors.grey.shade400),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             elevation: 0,
                           ),
                           onPressed: !canComplete ? null : () async {
-                            final currentContext = context;
-                            try {
-                              await supabase.from('food_listings').update({'status': 'completed'}).eq('id', orderId);
+                            final parentContext = context;
 
-                              if (!currentContext.mounted) return;
-
-                              openTargetReviewSheet(
-                                context: currentContext,
-                                orderId: orderId,
-                                revieweeId: donorId,
-                                revieweeRole: PlatformRole.donor,
-                                targetName: caterer,
-                              );
-                            } catch (e) {
-                              if (currentContext.mounted) {
-                                ScaffoldMessenger.of(currentContext).showSnackBar(
-                                  SnackBar(content: Text("Error completing handover: $e"), backgroundColor: Colors.redAccent),
+                            // 🌟 ATOMIC SECURE TRANSACTION CALL (Bypasses local client updates to avoid RLS crash)
+                            await FoodActionsService.executeClaimTransaction(
+                              context: parentContext,
+                              listingId: orderId,
+                              deliveryType: deliveryType,
+                              title: title,
+                              deliveryAddress: item['delivery_address']?.toString(), // Safely pass original custom address if any
+                              onSuccess: () {
+                                openTargetReviewSheet(
+                                  context: parentContext,
+                                  orderId: orderId,
+                                  revieweeId: donorId,
+                                  revieweeRole: PlatformRole.donor,
+                                  targetName: caterer,
                                 );
-                              }
-                            }
+                              },
+                            );
                           },
                         ),
                       ),
@@ -529,11 +534,11 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
       labelColor = Colors.blue;
       bgColor = Colors.blue.shade50;
     } else if (status == 'en_route_to_pickup') {
-      displayLabel = "Driver Heading to Donor";
-      labelColor = Colors.blueGrey;
-      bgColor = Colors.blueGrey.shade50;
+      displayLabel = "Driver En Route to Donor";
+      labelColor = Colors.orange.shade800; // 🌟 Fixed Color choice to match material specs safely
+      bgColor = Colors.orange.shade50;
     } else if (status == 'arrived_at_pickup') {
-      displayLabel = "Driver Processing Cargo";
+      displayLabel = "Driver at Pickup Point";
       labelColor = Colors.teal;
       bgColor = Colors.teal.shade50;
     } else if (status == 'in_transit') {

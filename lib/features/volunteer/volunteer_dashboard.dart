@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../volunteer/transit_hud_screen.dart';
 import '../volunteer/volunteer_past_runs_screen.dart';
-// 👇 IMPORT YOUR NEW EMERGENCY COMPONENT BLOCK LAYER
 import '../../widgets/emergency_hub_bottom_sheet.dart';
 
 class VolunteerDashboard extends StatelessWidget {
@@ -22,7 +21,6 @@ class VolunteerDashboard extends StatelessWidget {
           backgroundColor: Colors.white,
           elevation: 0,
           actions: [
-            // 🚨 ADDED: Top Header SOS Action for quick dashboard safety access
             IconButton(
               icon: const Icon(Icons.shield_outlined, color: Color(0xFFB71C1C)),
               tooltip: "Emergency Safety Desk",
@@ -104,8 +102,12 @@ class VolunteerDashboard extends StatelessWidget {
             final String assignedDriver = job['volunteer_id']?.toString() ?? '';
             final String status = job['status']?.toString() ?? '';
 
+            // 🌟 FIXED: Include ALL intermediate route tracking statuses so jobs do not disappear from this tab
             return assignedDriver == currentUserId &&
-                (status == 'assigned_to_volunteer' || status == 'in_transit');
+                (status == 'assigned_to_volunteer' ||
+                    status == 'en_route_to_pickup' ||
+                    status == 'arrived_at_pickup' ||
+                    status == 'in_transit');
           }).toList();
         } else {
           filteredJobs = listings.where((job) {
@@ -176,22 +178,19 @@ class VolunteerDashboard extends StatelessWidget {
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: (status == 'assigned_to_volunteer')
-                              ? Colors.orange
-                              : (status == 'in_transit' ? Colors.blue : Colors.green),
+                          backgroundColor: (status == 'claimed') ? Colors.green : Colors.orange,
                         ),
                         icon: Icon(
-                          status == 'assigned_to_volunteer'
-                              ? Icons.local_shipping
-                              : (status == 'in_transit' ? Icons.directions_run : Icons.assignment_outlined),
+                          status == 'claimed' ? Icons.assignment_outlined : Icons.local_shipping,
                           color: Colors.white,
                         ),
                         onPressed: () {
                           if (status == 'claimed') {
+                            // First time accepting: update to assigned state in DB
                             _updateJobStatus(context, supabase, job, 'assigned_to_volunteer');
-                          } else if (status == 'assigned_to_volunteer') {
-                            _updateJobStatus(context, supabase, job, 'in_transit');
-                          } else if (status == 'in_transit') {
+                          } else {
+                            // 🌟 FIXED: If already accepted, open the Transit HUD immediately.
+                            // The HUD file will securely guide them through sequential milestone clicks.
                             Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -201,9 +200,7 @@ class VolunteerDashboard extends StatelessWidget {
                           }
                         },
                         label: Text(
-                          status == 'assigned_to_volunteer'
-                              ? "Mark as Picked Up"
-                              : (status == 'in_transit' ? "View Active Delivery HUD" : "Accept Route"),
+                          status == 'claimed' ? "Accept Route" : "Open Live Transit HUD",
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                         ),
                       ),
@@ -249,12 +246,12 @@ class VolunteerDashboard extends StatelessWidget {
 
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Status updated to: ${nextStatus.replaceAll('_', ' ')}"), backgroundColor: Colors.green),
+        SnackBar(content: Text("Route accepted successfully!"), backgroundColor: Colors.green),
       );
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error updating status: ${e.toString()}"), backgroundColor: Colors.red),
+        SnackBar(content: Text("Error accepting route: ${e.toString()}"), backgroundColor: Colors.red),
       );
     }
   }
@@ -287,9 +284,12 @@ class VolunteerDashboard extends StatelessWidget {
   }
 
   Widget _buildStatusChip(String status) {
-    String label = "Requested";
+    String label = "Available";
     Color color = Colors.green;
+
     if (status == 'assigned_to_volunteer') { label = "Assigned"; color = Colors.orange; }
+    if (status == 'en_route_to_pickup') { label = "En Route"; color = Colors.orangeAccent; }
+    if (status == 'arrived_at_pickup') { label = "At Pickup"; color = Colors.purpleAccent; }
     if (status == 'in_transit') { label = "In Transit"; color = Colors.blue; }
 
     return Container(

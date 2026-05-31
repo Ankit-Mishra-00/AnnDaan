@@ -1,7 +1,8 @@
+import 'dart:ui'; // 🌟 Required for the premium BackdropFilter effect
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../services/food_actions_service.dart'; // Pointing to your centralized utility file
-import '../screens/login_screen.dart'; // Ensure this points to your login page file location
+import '../../services/food_actions_service.dart';
+import '../screens/login_screen.dart';
 
 class FoodDetails extends StatelessWidget {
   final Map<String, dynamic> itemData;
@@ -15,20 +16,17 @@ class FoodDetails extends StatelessWidget {
     required this.isUrgent,
   });
 
-  // ✨ NEW: The Master Guard Interceptor Engine
+  // The Master Guard Interceptor Engine
   void _processClaimAction(BuildContext context, String listingId, String title) async {
     final supabase = Supabase.instance.client;
     final currentUser = supabase.auth.currentUser;
 
-    // 🚪 STEP 1: GUEST INTERCEPTION - Catch unauthenticated users immediately
     if (currentUser == null) {
       _showLoginPromptDialog(context);
       return;
     }
 
-    // 🔐 STEP 2: VERIFICATION LEVEL CHECK - Evaluate parameters prior to triggering transactional states
     try {
-      // Show background loading indicator while checking database column parameters
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -42,20 +40,18 @@ class FoodDetails extends StatelessWidget {
           .single();
 
       if (!context.mounted) return;
-      Navigator.pop(context); // Dismiss loading spinner indicator securely
+      Navigator.pop(context);
 
       final bool isVerified = data['is_verified'] ?? false;
 
       if (!isVerified) {
-        // 🚧 RESTRICTED ACCESS: Halt flow with pending modal warning
         _showPendingVerificationDialog(context);
       } else {
-        // 🎉 APPROVED ACCESS: Load operations allocation prompt checklist
         _claimFoodItem(context, listingId, title);
       }
     } catch (e) {
       if (context.mounted) {
-        Navigator.pop(context); // Ensure recovery pop completes safely if failures trigger
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Profile verification check failure: $e"), backgroundColor: Colors.redAccent),
         );
@@ -63,7 +59,6 @@ class FoodDetails extends StatelessWidget {
     }
   }
 
-  // ✨ NEW: Explicit Guest Login Intermediary Panel
   void _showLoginPromptDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -82,7 +77,7 @@ class FoodDetails extends StatelessWidget {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () {
-              Navigator.pop(dialogContext); // Close dialog window overlay safely
+              Navigator.pop(dialogContext);
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -95,7 +90,6 @@ class FoodDetails extends StatelessWidget {
     );
   }
 
-  // ✨ NEW: Verification Blocking Warning Alert Modal
   void _showPendingVerificationDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -119,141 +113,200 @@ class FoodDetails extends StatelessWidget {
     );
   }
 
-  // Prompts the NGO with collection modalities upon claiming
   Future<void> _claimFoodItem(BuildContext parentContext, String listingId, String title) async {
-    // ✨ PERSISTENCE FIX: Declared OUTSIDE the StatefulBuilder so it doesn't reset on checkbox clicks
     bool isParcelConfirmed = false;
+    bool useCustomAddress = false;
+    final TextEditingController addressController = TextEditingController();
+    final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
     showDialog(
       context: parentContext,
       builder: (dialogContext) => AlertDialog(
-        title: Text("Claim '$title'"),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text("Claim '$title'", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         content: StatefulBuilder(
-          builder: (BuildContext dialogFrameContext, StateSetter setDialogState) { // ✨ CONTEXT FIX: Isolated inner dialog frame
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "Please verify your allocation criteria below:",
-                  style: TextStyle(fontSize: 14, color: Colors.grey),
-                ),
-                const SizedBox(height: 12),
+          builder: (BuildContext dialogFrameContext, StateSetter setDialogState) {
+            return SingleChildScrollView(
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Please verify your allocation criteria below:",
+                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
 
-                // Checkbox controls button state visibility dynamically
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text(
-                    "I confirm that our organization will reliably receive this parcel upon dispatch.",
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
-                  ),
-                  value: isParcelConfirmed,
-                  activeColor: Colors.green,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  onChanged: (bool? value) {
-                    // Updates the isolated state inside the dialog frame overlay smoothly
-                    setDialogState(() {
-                      isParcelConfirmed = value ?? false;
-                    });
-                  },
-                ),
-
-                if (isParcelConfirmed) ...[
-                  const Divider(height: 24),
-                  const Text(
-                    "Do you need independent volunteer system support to deliver this order, or can your team handle direct transport collection?",
-                    style: TextStyle(fontSize: 13, height: 1.3, color: Colors.black54),
-                  ),
-                  const SizedBox(height: 16),
-
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Option A: Direct Self-Collection
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green.shade600,
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: () async {
-                          // 1. Close the modal verification overlay panel instantly
-                          Navigator.pop(dialogContext);
-
-                          // 2. Fire database mutation using parentContext to protect the asynchronous thread
-                          await FoodActionsService.executeClaimTransaction(
-                            context: parentContext,
-                            listingId: listingId,
-                            deliveryType: 'self_pickup',
-                            title: title,
-                            onSuccess: () {
-                              // Pop the details page itself so the user falls back directly to a refreshed feed stream
-                              if (Navigator.canPop(parentContext)) {
-                                Navigator.pop(parentContext);
-                              }
-                            },
-                          );
-                        },
-                        child: const Row(
-                          children: [
-                            Icon(Icons.storefront, color: Colors.white),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                "No, Self-Pickup (We will drive)",
-                                style: TextStyle(color: Colors.white),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text(
+                        "I confirm that our organization will reliably receive this parcel upon dispatch.",
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
                       ),
-                      const SizedBox(height: 10),
+                      value: isParcelConfirmed,
+                      activeColor: Colors.green,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      onChanged: (bool? value) {
+                        setDialogState(() {
+                          isParcelConfirmed = value ?? false;
+                        });
+                      },
+                    ),
 
-                      // Option B: Volunteer Support
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue.shade600,
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: () async {
-                          // 1. Close the modal verification overlay panel instantly
-                          Navigator.pop(dialogContext);
+                    if (isParcelConfirmed) ...[
+                      const Divider(height: 24),
+                      const Text(
+                        "Do you need independent volunteer system support to deliver this order, or can your team handle direct transport collection?",
+                        style: TextStyle(fontSize: 13, height: 1.3, color: Colors.black54),
+                      ),
+                      const SizedBox(height: 16),
 
-                          // 2. Fire database mutation using parentContext to protect the asynchronous thread
-                          await FoodActionsService.executeClaimTransaction(
-                            context: parentContext,
-                            listingId: listingId,
-                            deliveryType: 'needs_volunteer',
-                            title: title,
-                            onSuccess: () {
-                              // Pop the details page itself so the user falls back directly to a refreshed feed stream
-                              if (Navigator.canPop(parentContext)) {
-                                Navigator.pop(parentContext);
-                              }
-                            },
-                          );
-                        },
-                        child: const Row(
-                          children: [
-                            Icon(Icons.handshake_outlined, color: Colors.white),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                "Yes, Need Volunteer Support",
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green.shade600,
+                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
-                          ],
-                        ),
+                            icon: const Icon(Icons.storefront, color: Colors.white),
+                            onPressed: () async {
+                              Navigator.pop(dialogContext);
+                              await FoodActionsService.executeClaimTransaction(
+                                context: parentContext,
+                                listingId: listingId,
+                                deliveryType: 'self_pickup',
+                                title: title,
+                                deliveryAddress: null, // Self-pickup clears custom delivery rules
+                                onSuccess: () {
+                                  if (Navigator.canPop(parentContext)) {
+                                    Navigator.pop(parentContext);
+                                  }
+                                },
+                              );
+                            },
+                            label: const Text(
+                              "No, Self-Pickup (We will drive)",
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          // VOLUNTEER TRUCK DELIVERY LOGIC SECTOR
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50.withAlpha(128),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.blue.shade100),
+                            ),
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.pin_drop_outlined, size: 18, color: Colors.blue),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      "Drop-off Destination",
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue),
+                                    ),
+                                    const Spacer(),
+                                    Switch(
+                                      value: useCustomAddress,
+                                      activeThumbColor: Colors.blue.shade700,
+                                      onChanged: (val) {
+                                        setDialogState(() {
+                                          useCustomAddress = val;
+                                        });
+                                      },
+                                    ),
+                                  ],
+                                ),
+                                Text(
+                                  useCustomAddress ? "Deliver to a custom address" : "Deliver to default saved organizational profile address",
+                                  style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                                ),
+                                if (useCustomAddress) ...[
+                                  const SizedBox(height: 10),
+                                  TextFormField(
+                                    controller: addressController,
+                                    maxLines: 2,
+                                    style: const TextStyle(fontSize: 13),
+                                    decoration: InputDecoration(
+                                      hintText: "Enter alternative complete drop-off address...",
+                                      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                                      contentPadding: const EdgeInsets.all(10),
+                                      filled: true,
+                                      fillColor: Colors.white,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(color: Colors.grey.shade300),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(color: Colors.grey.shade300),
+                                      ),
+                                    ),
+                                    validator: (value) {
+                                      if (useCustomAddress && (value == null || value.trim().isEmpty)) {
+                                        return "Please provide destination criteria address details.";
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                ],
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blue.shade600,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                    icon: const Icon(Icons.handshake_outlined, color: Colors.white),
+                                    onPressed: () async {
+                                      if (formKey.currentState?.validate() ?? false) {
+                                        Navigator.pop(dialogContext);
+
+                                        final customDeliveryAddress = useCustomAddress ? addressController.text.trim() : null;
+
+                                        // 🌟 CRASH-FREE ATOMIC TRANSACTION INVOKED DIRECTLY HERE
+                                        await FoodActionsService.executeClaimTransaction(
+                                          context: parentContext,
+                                          listingId: listingId,
+                                          deliveryType: 'needs_volunteer',
+                                          title: title,
+                                          deliveryAddress: customDeliveryAddress, // Passed right here!
+                                          onSuccess: () {
+                                            if (Navigator.canPop(parentContext)) {
+                                              Navigator.pop(parentContext);
+                                            }
+                                          },
+                                        );
+                                      }
+                                    },
+                                    label: const Text(
+                                      "Yes, Need Volunteer Support",
+                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
-                  ),
-                ],
-              ],
+                  ],
+                ),
+              ),
             );
           },
         ),
@@ -277,8 +330,13 @@ class FoodDetails extends StatelessWidget {
     final double weight = double.tryParse(itemData['food_weight_kg']?.toString() ?? '0') ?? 0.0;
     final double fee = double.tryParse(itemData['delivery_fee']?.toString() ?? '0') ?? 0.0;
     final String address = itemData['pickup_address'] ?? 'Address detailed on claim receipt';
-    final String? imageUrl = itemData['image_url'];
     final bool providesDelivery = itemData['provides_delivery'] ?? false;
+
+    final String rawImageUrl = itemData['image_url']?.toString() ?? '';
+    final List<String> imageUrls = rawImageUrl.isNotEmpty ? rawImageUrl.split(',') : [];
+
+    final PageController sliderController = PageController();
+    final ValueNotifier<int> activeImageIndex = ValueNotifier<int>(0);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -292,14 +350,72 @@ class FoodDetails extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top Image/Cover Widget
             Container(
-              height: 220,
+              height: 260,
               width: double.infinity,
-              color: Colors.grey[100],
-              child: imageUrl != null
-                  ? Image.network(imageUrl, fit: BoxFit.cover)
-                  : Center(child: Icon(Icons.restaurant, size: 80, color: Colors.grey.shade400)),
+              color: Colors.black,
+              child: imageUrls.isEmpty
+                  ? Center(child: Icon(Icons.restaurant, size: 80, color: Colors.grey.shade600))
+                  : Stack(
+                children: [
+                  PageView.builder(
+                    controller: sliderController,
+                    itemCount: imageUrls.length,
+                    onPageChanged: (index) => activeImageIndex.value = index,
+                    itemBuilder: (context, index) {
+                      final imageUrl = imageUrls[index];
+                      return Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.network(
+                            imageUrl,
+                            fit: BoxFit.cover,
+                          ),
+                          BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                            child: Container(color: Colors.black.withAlpha(90)),
+                          ),
+                          Center(
+                            child: Image.network(
+                              imageUrl,
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) => Center(
+                                child: Icon(Icons.broken_image, size: 48, color: Colors.grey.shade400),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  if (imageUrls.length > 1)
+                    Positioned(
+                      bottom: 16,
+                      right: 16,
+                      child: ValueListenableBuilder<int>(
+                        valueListenable: activeImageIndex,
+                        builder: (context, currentIdx, _) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black87,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.white24, width: 0.5),
+                            ),
+                            child: Text(
+                              "${currentIdx + 1} / ${imageUrls.length}",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
             ),
 
             Padding(
@@ -307,7 +423,6 @@ class FoodDetails extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Title & Expiry Row
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -340,13 +455,11 @@ class FoodDetails extends StatelessWidget {
                   ),
                   const Divider(height: 32),
 
-                  // Description Segment
                   const Text("Items Included", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   Text(itemsDesc, style: TextStyle(fontSize: 15, color: Colors.grey.shade700, height: 1.4)),
                   const Divider(height: 32),
 
-                  // Metrics Row Grid Block
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -361,7 +474,6 @@ class FoodDetails extends StatelessWidget {
                   ),
                   const Divider(height: 32),
 
-                  // Location Block
                   const Text("Pickup Location Details", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   Row(
@@ -379,7 +491,6 @@ class FoodDetails extends StatelessWidget {
                   ),
                   const SizedBox(height: 40),
 
-                  // Bottom Claim Operational Row Panel
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -397,7 +508,6 @@ class FoodDetails extends StatelessWidget {
                         height: 50,
                         width: MediaQuery.of(context).size.width * 0.55,
                         child: ElevatedButton(
-                          // ⚡ ROUTED THROUGH THE SECURITY INTERCEPT ENGINE INSTEAD OF DIRECT CLAIM
                           onPressed: () => _processClaimAction(context, listingId, title),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: isUrgent ? Colors.red.shade600 : Colors.green.shade600,
